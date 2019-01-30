@@ -24,18 +24,17 @@ def get_scheduler_from_request(request):
     return request.config_dict.get('AIOJOBS_SCHEDULER')
 
 
-async def spawn(request, coro):
-    return await get_scheduler(request).spawn(coro)
+async def spawn(request, coro, *args, **kwargs):
+    return await get_scheduler(request).spawn(coro, *args, **kwargs)
 
 
 def atomic(coro):
     @wraps(coro)
-    async def wrapper(request):
-        if isinstance(request, View):
-            # Class Based View decorated.
-            request = request.request
-
-        job = await spawn(request, coro(request))
+    async def wrapper(request, *args, **kwargs):
+        job = await spawn(
+            request.request if isinstance(request, View) else request,
+            coro, request, *args, **kwargs
+        )
         return await job.wait()
     return wrapper
 

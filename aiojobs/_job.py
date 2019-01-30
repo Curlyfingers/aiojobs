@@ -1,19 +1,32 @@
 import asyncio
 import sys
+import uuid
 import traceback
 
 import async_timeout
 
 
 class Job:
-    _source_traceback = None
-    _closed = False
-    _explicit = False
-    _task = None
+    STATUS_UNKNOWN = 'unknown'
+    STATUS_PENDING = 'pending'
+    STATUS_ACTIVE = 'active'
+    STATUS_CLOSED = 'closed'
 
-    def __init__(self, coro, scheduler, loop):
+    _task = None
+    _uuid = None
+    _closed = False
+    _message = None
+    _progress = 0
+    _explicit = False
+    _source_traceback = None
+
+    def __init__(self, f, scheduler, loop, *args, **kwargs):
+        assert asyncio.iscoroutinefunction(f)
+        self._uuid = uuid.uuid4().hex
+        self._coro = f(
+            *args, job=self, scheduler=scheduler, loop=loop, **kwargs
+        )
         self._loop = loop
-        self._coro = coro
         self._scheduler = scheduler
         self._started = loop.create_future()
 
@@ -30,6 +43,38 @@ class Job:
         if info:
             info += ' '
         return '<Job {}coro=<{}>>'.format(info, self._coro)
+
+    @property
+    def uuid(self):
+        return self._uuid
+
+    @property
+    def message(self):
+        return self._message
+
+    @message.setter
+    def message(self, v):
+        assert isinstance(v, str)
+        self._message = v
+
+    @property
+    def progress(self):
+        return self._progress
+
+    @progress.setter
+    def progress(self, v):
+        assert isinstance(v, int)
+        self._progress = v
+
+    @property
+    def status(self):
+        if self.active:
+            return self.STATUS_ACTIVE
+        if self.pending:
+            return self.STATUS_PENDING
+        if self.closed:
+            return self.STATUS_CLOSED
+        return self.STATUS_UNKNOWN
 
     @property
     def active(self):

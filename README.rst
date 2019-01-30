@@ -16,6 +16,12 @@ aiojobs
 
 Jobs scheduler for managing background task (asyncio)
 
+Changes:
+    - passing parameters such as `scheduler`, `loop`, `job` to coroutine
+    - you may pass positional and keyword arguments to coroutine
+    - `spawn` method expects async function instead of coroutine and invoke it in schedule
+    - added `uuid`, `status`, `message` and `progress` properties to track job
+    - scheduler uses dictionary instead set to store tasks
 
 The library gives controlled way for scheduling background tasks for
 asyncio applications.
@@ -33,24 +39,52 @@ Usage example
 .. code-block:: python
 
    import asyncio
-   import aiojobs
+    import aiojobs
 
-   async def coro(timeout):
-       await asyncio.sleep(timeout)
 
-   async def main():
-       scheduler = await aiojobs.create_scheduler()
-       for i in range(100):
-           # spawn jobs
-           await scheduler.spawn(coro(i/10))
+    async def long_task(timeout, job, *args, **kwargs):
+        job.message = 'Long task started...'
+        while job.progress < 100:
+            job.message = 'Very important message from the task'
+            job.progress += 10
+            await asyncio.sleep(timeout)
 
-       await asyncio.sleep(5.0)
-       # not all scheduled jobs are finished at the moment
 
-       # gracefully close spawned jobs
-       await scheduler.close()
+    async def poll_task(target_id, frequency, scheduler, job, **kwargs):
+        def show_status():
+            print(
+                f'Job UUID: {target_job.uuid},'
+                f' status: {target_job.status},'
+                f' message: {target_job.message},'
+                f' progress: {target_job.progress}%'
+            )
+        print(f'Polling job UUID: {job.uuid} started')
+        target_job = scheduler.jobs.get(target_id)
+        if not target_id:
+            return
+        try:
+            while True:
+                show_status()
+                await asyncio.sleep(1/frequency)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            print(f'Polling job UUID: {job.uuid} stopped')
 
-   asyncio.get_event_loop().run_until_complete(main())
+
+    async def main():
+        scheduler = await aiojobs.create_scheduler()
+
+        job = await scheduler.spawn(long_task, timeout=1)
+        await scheduler.spawn(poll_task, target_id= job.uuid, frequency=2)
+
+        await asyncio.sleep(15)
+        # not all scheduled jobs are finished at the moment
+
+        # gracefully close spawned jobs
+        await scheduler.close()
+
+    asyncio.get_event_loop().run_until_complete(main())
 
 
 Integration with aiohttp.web
@@ -62,7 +96,7 @@ Integration with aiohttp.web
    from aiojobs.aiohttp import setup, spawn
 
    async def handler(request):
-       await spawn(request, coro())
+       await spawn(request, coro)
        return web.Response()
 
    app = web.Application()
@@ -76,7 +110,7 @@ or just
    from aiojobs.aiohttp import atomic
 
    @atomic
-   async def handler(request):
+   async def handler(request, *args, **kwargs):
        return web.Response()
 
 For more information read documentation: https://aiojobs.readthedocs.io

@@ -12,13 +12,13 @@ from aiojobs.aiohttp import spawn
 async def test_plugin(test_client):
     job = None
 
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(10)
 
     async def handler(request):
         nonlocal job
 
-        job = await spawn(request, coro())
+        job = await spawn(request, coro)
         assert not job.closed
         return web.Response()
 
@@ -51,7 +51,7 @@ async def test_no_setup(test_client):
 
 async def test_atomic(test_client):
     @atomic
-    async def handler(request):
+    async def handler(request, **kwargs):
         await asyncio.sleep(0)
         return web.Response()
 
@@ -74,7 +74,7 @@ async def test_atomic_from_view(test_client):
 
     class MyView(web.View):
         @atomic
-        async def get(self):
+        async def get(self, *args, **kwargs):
             return web.Response()
 
     app.router.add_route("*", "/", MyView)
@@ -97,7 +97,7 @@ async def test_nested_application(test_client):
     app2 = web.Application()
 
     class MyView(web.View):
-        async def get(self):
+        async def get(self, **kwargs):
             assert get_scheduler_from_request(self.request) ==\
                 get_scheduler_from_app(app)
             return web.Response()

@@ -10,9 +10,9 @@ def test_ctor(scheduler):
 
 
 async def test_spawn(scheduler, loop):
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(1, loop=loop)
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     assert not job.closed
 
     assert len(scheduler) == 1
@@ -21,9 +21,9 @@ async def test_spawn(scheduler, loop):
 
 
 async def test_run_retval(scheduler, loop):
-    async def coro():
+    async def coro(**kwargs):
         return 1
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     ret = await job.wait()
     assert ret == 1
 
@@ -38,11 +38,11 @@ async def test_exception_in_explicit_waiting(make_scheduler, loop):
     exc_handler = mock.Mock()
     scheduler = await make_scheduler(exception_handler=exc_handler)
 
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(0, loop=loop)
         raise RuntimeError()
 
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
 
     with pytest.raises(RuntimeError):
         await job.wait()
@@ -60,11 +60,11 @@ async def test_exception_non_waited_job(make_scheduler, loop):
     scheduler = await make_scheduler(exception_handler=exc_handler)
     exc = RuntimeError()
 
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(0, loop=loop)
         raise exc
 
-    await scheduler.spawn(coro())
+    await scheduler.spawn(coro)
     assert len(scheduler) == 1
 
     await asyncio.sleep(0.05, loop=loop)
@@ -86,11 +86,11 @@ async def test_exception_on_close(make_scheduler, loop):
 
     fut = asyncio.Future()
 
-    async def coro():
+    async def coro(**kwargs):
         fut.set_result(None)
         raise exc
 
-    await scheduler.spawn(coro())
+    await scheduler.spawn(coro)
     assert len(scheduler) == 1
 
     await scheduler.close()
@@ -113,12 +113,12 @@ async def test_close_timeout(make_scheduler):
 
 
 async def test_scheduler_repr(scheduler, loop):
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(1, loop=loop)
 
     assert repr(scheduler) == '<Scheduler jobs=0>'
 
-    await scheduler.spawn(coro())
+    await scheduler.spawn(coro)
     assert repr(scheduler) == '<Scheduler jobs=1>'
 
     await scheduler.close()
@@ -126,12 +126,12 @@ async def test_scheduler_repr(scheduler, loop):
 
 
 async def test_close_jobs(scheduler, loop):
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(1, loop=loop)
 
     assert not scheduler.closed
 
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     await scheduler.close()
     assert job.closed
     assert scheduler.closed
@@ -164,10 +164,10 @@ def test_exception_handler_default(scheduler, loop):
 
 
 async def test_wait_with_timeout(scheduler, loop):
-    async def coro():
+    async def coro(**kwargs):
         await asyncio.sleep(1, loop=loop)
 
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     with pytest.raises(asyncio.TimeoutError):
         await job.wait(timeout=0.01)
     assert job.closed
@@ -181,13 +181,13 @@ async def test_timeout_on_closing(make_scheduler, loop):
     fut1 = asyncio.Future()
     fut2 = asyncio.Future()
 
-    async def coro():
+    async def coro(**kwargs):
         try:
             await fut1
         except asyncio.CancelledError:
             await fut2
 
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     await asyncio.sleep(0.001, loop=loop)
     await scheduler.close()
     assert job.closed
@@ -206,11 +206,11 @@ async def test_exception_on_closing(make_scheduler, loop):
     fut = asyncio.Future()
     exc = RuntimeError()
 
-    async def coro():
+    async def coro(**kwargs):
         fut.set_result(None)
         raise exc
 
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     await fut
     await scheduler.close()
     assert job.closed
@@ -239,27 +239,27 @@ async def test_pending_limit(make_scheduler):
 async def test_pending_queue_infinite(make_scheduler):
     scheduler = await make_scheduler(limit=1)
 
-    async def coro(fut):
+    async def coro(fut, **kwargs):
         await fut
 
     fut1 = asyncio.Future()
     fut2 = asyncio.Future()
     fut3 = asyncio.Future()
 
-    await scheduler.spawn(coro(fut1))
+    await scheduler.spawn(coro, fut=fut1)
     assert scheduler.pending_count == 0
 
-    await scheduler.spawn(coro(fut2))
+    await scheduler.spawn(coro, fut=fut2)
     assert scheduler.pending_count == 1
 
-    await scheduler.spawn(coro(fut3))
+    await scheduler.spawn(coro, fut=fut3)
     assert scheduler.pending_count == 2
 
 
 async def test_pending_queue_limit_wait(make_scheduler, loop):
     scheduler = await make_scheduler(limit=1, pending_limit=1)
 
-    async def coro(fut):
+    async def coro(fut, **kwargs):
         await asyncio.sleep(0)
         await fut
 
@@ -267,16 +267,16 @@ async def test_pending_queue_limit_wait(make_scheduler, loop):
     fut2 = asyncio.Future()
     fut3 = asyncio.Future()
 
-    await scheduler.spawn(coro(fut1))
+    await scheduler.spawn(coro, fut=fut1)
     assert scheduler.pending_count == 0
 
-    await scheduler.spawn(coro(fut2))
+    await scheduler.spawn(coro, fut=fut2)
     assert scheduler.pending_count == 1
 
     with pytest.raises(asyncio.TimeoutError):
         # try to wait for 1 sec to add task to pending queue
         with timeout(1, loop=loop):
-            await scheduler.spawn(coro(fut3))
+            await scheduler.spawn(coro, fut=fut3)
 
     assert scheduler.pending_count == 1
 
@@ -284,21 +284,21 @@ async def test_pending_queue_limit_wait(make_scheduler, loop):
 async def test_scheduler_concurrency_limit(make_scheduler):
     scheduler = await make_scheduler(limit=1)
 
-    async def coro(fut):
+    async def coro(fut, **kwargs):
         await fut
 
     assert scheduler.active_count == 0
     assert scheduler.pending_count == 0
 
     fut1 = asyncio.Future()
-    job1 = await scheduler.spawn(coro(fut1))
+    job1 = await scheduler.spawn(coro, fut=fut1)
 
     assert scheduler.active_count == 1
     assert scheduler.pending_count == 0
     assert job1.active
 
     fut2 = asyncio.Future()
-    job2 = await scheduler.spawn(coro(fut2))
+    job2 = await scheduler.spawn(coro, fut=fut2)
 
     assert scheduler.active_count == 1
     assert scheduler.pending_count == 1
@@ -324,18 +324,18 @@ async def test_scheduler_concurrency_limit(make_scheduler):
 async def test_resume_closed_task(make_scheduler):
     scheduler = await make_scheduler(limit=1)
 
-    async def coro(fut):
+    async def coro(fut, **kwargs):
         await fut
 
     assert scheduler.active_count == 0
 
     fut1 = asyncio.Future()
-    job1 = await scheduler.spawn(coro(fut1))
+    job1 = await scheduler.spawn(coro, fut=fut1)
 
     assert scheduler.active_count == 1
 
     fut2 = asyncio.Future()
-    job2 = await scheduler.spawn(coro(fut2))
+    job2 = await scheduler.spawn(coro, fut=fut2)
 
     assert scheduler.active_count == 1
 
@@ -356,11 +356,11 @@ async def test_concurrency_disabled(make_scheduler):
 
     scheduler = await make_scheduler(limit=None)
 
-    async def coro():
+    async def coro(**kwargs):
         fut1.set_result(None)
         await fut2
 
-    job = await scheduler.spawn(coro())
+    job = await scheduler.spawn(coro)
     await fut1
     assert scheduler.active_count == 1
 
@@ -370,14 +370,10 @@ async def test_concurrency_disabled(make_scheduler):
 
 
 async def test_run_after_close(scheduler, loop):
-    async def f():
+    async def f(**kwargs):
         pass
 
     await scheduler.close()
 
-    coro = f()
     with pytest.raises(RuntimeError):
-        await scheduler.spawn(coro)
-
-    with pytest.warns(RuntimeWarning):
-        del coro
+        await scheduler.spawn(f)

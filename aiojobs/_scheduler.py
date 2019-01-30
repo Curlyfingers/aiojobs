@@ -16,7 +16,7 @@ class Scheduler(*bases):
     def __init__(self, *, close_timeout, limit, pending_limit,
                  exception_handler, loop):
         self._loop = loop
-        self._jobs = set()
+        self._jobs = {}
         self._close_timeout = close_timeout
         self._limit = limit
         self._exception_handler = exception_handler
@@ -26,13 +26,13 @@ class Scheduler(*bases):
         self._closed = False
 
     def __iter__(self):
-        return iter(list(self._jobs))
+        return iter(list(self._jobs.values()))
 
     def __len__(self):
         return len(self._jobs)
 
     def __contains__(self, job):
-        return job in self._jobs
+        return job in self._jobs.values()
 
     def __repr__(self):
         info = []
@@ -42,6 +42,10 @@ class Scheduler(*bases):
         if info:
             info += ' '
         return '<Scheduler {}jobs={}>'.format(info, len(self))
+
+    @property
+    def jobs(self):
+        return self._jobs
 
     @property
     def limit(self):
@@ -67,13 +71,13 @@ class Scheduler(*bases):
     def closed(self):
         return self._closed
 
-    async def spawn(self, coro):
+    async def spawn(self, coro, *args, **kwargs):
         if self._closed:
             raise RuntimeError("Scheduling a new job after closing")
-        job = Job(coro, self, self._loop)
+        job = Job(coro, self, self._loop, *args, **kwargs)
         should_start = (self._limit is None or
                         self.active_count < self._limit)
-        self._jobs.add(job)
+        self._jobs.setdefault(job.uuid, job)
         if should_start:
             job._start()
         else:
@@ -93,7 +97,7 @@ class Scheduler(*bases):
             while not self._pending.empty():
                 self._pending.get_nowait()
             await asyncio.gather(
-                *[job._close(self._close_timeout) for job in jobs],
+                *[job._close(self._close_timeout) for job in jobs.values()],
                 loop=self._loop, return_exceptions=True)
             self._jobs.clear()
         self._failed_tasks.put_nowait(None)
@@ -111,7 +115,7 @@ class Scheduler(*bases):
         return self._exception_handler
 
     def _done(self, job):
-        self._jobs.discard(job)
+        del self._jobs[job.uuid]
         if not self.pending_count:
             return
         # No pending jobs when limit is None
