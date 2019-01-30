@@ -38,7 +38,7 @@ Usage example
 
 .. code-block:: python
 
-   import asyncio
+    import asyncio
     import aiojobs
 
 

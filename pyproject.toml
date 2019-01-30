@@ -6,7 +6,7 @@ build-backend = "flit.buildapi"
 module = "aiojobs"
 author = "Andrew Svetlov"
 author-email = "andrew.svetlov@gmail.com"
-home-page = "https://github.com/aio-libs/aiojobs"
+home-page = "https://github.com/Curlyfingers/aiojobs.git"
 requires=[]
 requires-python=">=3.5"
 description-file="README.rst"
